@@ -6,13 +6,9 @@ fn solve_part1(inputfile: String) -> usize {
     let contents = std::fs::read_to_string(inputfile.to_string())
         .expect("Something went wrong reading the file");
 
-    let entries = contents
+    return contents
         .lines()
         .map(|x| x.parse::<usize>().unwrap())
-        .collect::<Vec<usize>>();
-
-    return entries
-        .iter()
         .combinations(2)
         .filter_map(
             |combination| match combination.iter().fold(0, |sum, &x| sum + x) {
@@ -32,13 +28,9 @@ fn solve_part2(inputfile: String) -> usize {
     let contents = std::fs::read_to_string(inputfile.to_string())
         .expect("Something went wrong reading the file");
 
-    let entries = contents
+    return contents
         .lines()
         .map(|x| x.parse::<usize>().unwrap())
-        .collect::<Vec<usize>>();
-
-    return entries
-        .iter()
         .combinations(3)
         .filter_map(
             |combination| match combination.iter().fold(0, |sum, &x| sum + x) {
