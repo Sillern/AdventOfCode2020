@@ -13,8 +13,19 @@ fn solve_part1(inputfile: String) -> usize {
 
     return entries
         .iter()
-        .filter_map(|x| entries.iter().find(|&&y| y == 2020usize - *x))
-        .fold(1, |product, &entry| product * entry);
+        .combinations(2)
+        .filter_map(
+            |combination| match combination.iter().fold(0, |sum, &x| sum + x) {
+                2020usize => Some(
+                    combination
+                        .iter()
+                        .fold(1, |product, &entry| product * entry),
+                ),
+                _ => None,
+            },
+        )
+        .next()
+        .unwrap();
 }
 
 fn solve_part2(inputfile: String) -> usize {
@@ -28,8 +39,19 @@ fn solve_part2(inputfile: String) -> usize {
 
     return entries
         .iter()
-        .filter_map(|x| entries.iter().find(|&&y| y == 2020usize - *x))
-        .fold(1, |product, &entry| product * entry);
+        .combinations(3)
+        .filter_map(
+            |combination| match combination.iter().fold(0, |sum, &x| sum + x) {
+                2020usize => Some(
+                    combination
+                        .iter()
+                        .fold(1, |product, &entry| product * entry),
+                ),
+                _ => None,
+            },
+        )
+        .next()
+        .unwrap();
 }
 
 fn main() {
