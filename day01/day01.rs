@@ -1,49 +1,36 @@
 use itertools::Itertools;
-use std::convert::TryInto;
 use std::env;
 
 fn solve_part1(inputfile: String) -> usize {
-    let contents = std::fs::read_to_string(inputfile.to_string())
-        .expect("Something went wrong reading the file");
+    let contents =
+        std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
 
-    return contents
+    contents
         .lines()
         .map(|x| x.parse::<usize>().unwrap())
         .combinations(2)
-        .filter_map(
-            |combination| match combination.iter().fold(0, |sum, &x| sum + x) {
-                2020usize => Some(
-                    combination
-                        .iter()
-                        .fold(1, |product, &entry| product * entry),
-                ),
-                _ => None,
-            },
-        )
+        .filter_map(|combination| match combination.iter().sum() {
+            2020usize => Some(combination.iter().product()),
+            _ => None,
+        })
         .next()
-        .unwrap();
+        .unwrap()
 }
 
 fn solve_part2(inputfile: String) -> usize {
-    let contents = std::fs::read_to_string(inputfile.to_string())
-        .expect("Something went wrong reading the file");
+    let contents =
+        std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
 
-    return contents
+    contents
         .lines()
         .map(|x| x.parse::<usize>().unwrap())
         .combinations(3)
-        .filter_map(
-            |combination| match combination.iter().fold(0, |sum, &x| sum + x) {
-                2020usize => Some(
-                    combination
-                        .iter()
-                        .fold(1, |product, &entry| product * entry),
-                ),
-                _ => None,
-            },
-        )
+        .filter_map(|combination| match combination.iter().sum() {
+            2020usize => Some(combination.iter().product()),
+            _ => None,
+        })
         .next()
-        .unwrap();
+        .unwrap()
 }
 
 fn main() {
