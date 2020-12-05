@@ -5,18 +5,18 @@ use std::env;
 type Coordinate = (i32, i32);
 struct HillPath {
     current: Coordinate,
+    next: Coordinate,
     dimensions: Coordinate,
     step: Coordinate,
-    repeats: u32,
 }
 
 impl HillPath {
     fn new(start_pos: Coordinate, dimensions: Coordinate, step: Coordinate) -> HillPath {
         HillPath {
             current: start_pos,
+            next: start_pos,
             dimensions,
             step,
-            repeats: 0,
         }
     }
 }
@@ -27,17 +27,16 @@ impl Iterator for HillPath {
         if self.current.1 >= self.dimensions.1 {
             None
         } else {
-            if (self.current.0 + self.step.0) >= self.dimensions.0 {
-                self.repeats += 1;
-            }
+            self.current = (self.next.0 % self.dimensions.0, self.next.1);
+            let repeats = (self.next.0 / self.dimensions.0) as u32;
 
-            self.current.0 = (self.current.0 + self.step.0) % self.dimensions.0;
-            self.current.1 += self.step.1;
+            self.next.0 += self.step.0;
+            self.next.1 += self.step.1;
 
             if self.current.1 >= self.dimensions.1 {
                 None
             } else {
-                Some((self.current, self.repeats))
+                Some((self.current, repeats))
             }
         }
     }
@@ -94,11 +93,11 @@ fn solve_part2(inputfile: String) -> i32 {
 
     let start_coord = (0 as i32, 0 as i32);
 
-    let steps = vec![(1, 1), (3, 1), (5, 1), (7, 1), (1, 2)];
+    let slopes = vec![(1, 1), (3, 1), (5, 1), (7, 1), (1, 2)];
 
-    steps.iter().fold(1, |product, steps| {
+    slopes.iter().fold(1, |product, slope| {
         product
-            * HillPath::new(start_coord, dimensions, *steps).fold(0, |sum, (pos, _)| {
+            * HillPath::new(start_coord, dimensions, *slope).fold(0, |sum, (pos, _)| {
                 if tree_map.contains_key(&pos) {
                     sum + 1
                 } else {
@@ -110,54 +109,90 @@ fn solve_part2(inputfile: String) -> i32 {
 
 type Color = (u8, u8, u8);
 
-fn draw_tree(pixels: &mut Vec<(i32, i32, Color)>, center: (i32, i32), scale: i32) {
-    fn draw_tree_inner(pixels: &mut Vec<(i32, i32, Color)>, top_left: (i32, i32)) {
-        let tree = vec![
-            "00011000", "00111100", "01011010", "01111110", "10111101", "11111111", "00022000",
-            "00022000",
-        ];
-
-        tree.iter().enumerate().for_each(|(y, row)| {
-            row.chars().enumerate().for_each(|(x, value)| {
+fn draw_symbol(pixels: &mut Vec<(i32, i32, Color)>, top_left: (i32, i32), pattern: &str) {
+    pattern.split('\n').enumerate().for_each(|(y, row)| {
+        row.chars()
+            .map(|value| value.to_digit(10).unwrap() as i32)
+            .enumerate()
+            .for_each(|(x, value)| {
                 let color = match value {
-                    '1' => (0x33, 0xCC, 0x44),
-                    '2' => (0xAA, 0x66, 0xCC),
+                    1 => (0x33, 0xCC, 0x44),
+                    2 => (0x8A, 0x26, 0x3C),
+                    3 => (0xAA, 0x36, 0x3C),
                     _ => (0xCC, 0x66, 0x44),
                 };
-                if value != '0' {
+
+                if value != 0 {
                     pixels.push(((top_left.0 + x as i32), (top_left.1 + y as i32), color));
                 }
             });
-        });
-    }
+    });
+}
 
-    let scaled_top_left = (center.0 * scale - scale / 2, center.1 * scale - scale / 2);
-    draw_tree_inner(pixels, scaled_top_left);
+fn draw_scaled_sled(pixels: &mut Vec<(i32, i32, Color)>, center: (i32, i32)) {
+    let symbol = "0000000000000000
+0000000000033000
+3300000000003330
+2300000000000033
+3333223333330033
+3233332333320330
+0022000033000330
+0022000022003300
+3333333333333000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000";
+
+    let top_left = (center.0 - 8, center.1 - 8);
+    draw_symbol(pixels, top_left, symbol);
+}
+
+fn draw_tree(pixels: &mut Vec<(i32, i32, Color)>, center: (i32, i32), scale: i32) {
+    let symbol = "0000000110000000
+0000001110000000
+0000001111000000
+0000011111100000
+0001111111110000
+0010011111111100
+0000111111100000
+0001111111110000
+0011111111111000
+0110111111011100
+0000111111100000
+0001111111111000
+0011111121111100
+0110001221000110
+1000002222000001
+0000002222000000";
+    let top_left = (center.0 * scale - scale / 2, center.1 * scale - scale / 2);
+
+    draw_symbol(pixels, top_left, symbol);
 }
 
 fn draw_fallen_tree(pixels: &mut Vec<(i32, i32, Color)>, center: (i32, i32), scale: i32) {
-    fn draw_tree_inner(pixels: &mut Vec<(i32, i32, Color)>, top_left: (i32, i32)) {
-        let tree = vec![
-            "00000000", "00000000", "00000000", "00010100", "00111100", "11112122", "01111222",
-            "00000000",
-        ];
+    let symbol = "0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000000000000000
+0000100100100000
+0001101101100022
+0011111111112222
+0111111111122222
+1111111111112200
+0111111111111000";
+    let top_left = (center.0 * scale - scale / 2, center.1 * scale - scale / 2);
 
-        tree.iter().enumerate().for_each(|(y, row)| {
-            row.chars().enumerate().for_each(|(x, value)| {
-                let color = match value {
-                    '1' => (0x33, 0xCC, 0x44),
-                    '2' => (0xAA, 0x66, 0xCC),
-                    _ => (0xCC, 0x66, 0x44),
-                };
-                if value != '0' {
-                    pixels.push(((top_left.0 + x as i32), (top_left.1 + y as i32), color));
-                }
-            });
-        });
-    }
-
-    let scaled_top_left = (center.0 * scale - scale / 2, center.1 * scale - scale / 2);
-    draw_tree_inner(pixels, scaled_top_left);
+    draw_symbol(pixels, top_left, symbol);
 }
 
 struct LineOfSight {
@@ -169,6 +204,7 @@ struct LineOfSight {
     y_sign: i32,
     error_value: i32,
 }
+
 impl LineOfSight {
     fn new(start_pos: Coordinate, end_pos: Coordinate) -> LineOfSight {
         let x_diff = (end_pos.0 - start_pos.0).abs();
@@ -231,97 +267,103 @@ fn draw_forest(inputfile: String) {
         });
     });
 
-    let start_coord = (0 as i32, 0 as i32);
-
     let x_min = tree_map.iter().map(|(pos, _)| pos.0).min().unwrap();
     let x_max = tree_map.iter().map(|(pos, _)| pos.0).max().unwrap();
     let y_min = tree_map.iter().map(|(pos, _)| pos.1).min().unwrap();
     let y_max = tree_map.iter().map(|(pos, _)| pos.1).max().unwrap();
-    let x_range = 1 + (x_max - x_min) as u32;
-    let y_range = 1 + (y_max - y_min) as u32;
-    let dimensions: Coordinate = (x_range as i32, y_range as i32);
+    let x_range = (x_max - x_min) as u32;
+    let y_range = (y_max - y_min) as u32;
+    let dimensions: Coordinate = (1 + x_range as i32, 1 + y_range as i32);
 
-    let steps = (3, 1);
-    let repeating_patterns =
-        1 + HillPath::new(start_coord, dimensions, steps).fold(0, |max_repeats, (_, repeats)| {
-            if repeats > max_repeats {
-                repeats
-            } else {
-                max_repeats
-            }
-        });
-
-    let scale = 8;
+    let slope = (3, 1);
+    let scale: i32 = 16;
     let border = 2;
-    let size = (x_range * repeating_patterns, y_range);
+    let viewport = (15, 12);
     let real_size = (
-        ((size.0 + border * 2) * scale as u32),
-        ((size.1 + border * 2) * scale as u32),
+        ((viewport.0 + border * 2) * scale as u32),
+        ((viewport.1 + border * 2) * scale as u32),
     );
 
-    for iteration in 0..1 {
-        let mut pixels = Vec::<(i32, i32, Color)>::new();
-        for (tree, exists) in tree_map.iter() {
-            if *exists == 0 {
-                continue;
-            }
-            for repeat in 0..repeating_patterns {
-                let tree_coord = (tree.0 + (repeat * x_range) as i32, tree.1);
-                if HillPath::new(start_coord, dimensions, steps)
-                    .any(|(path_pos, repeats)| path_pos == *tree && repeats == repeat)
-                {
-                    draw_fallen_tree(&mut pixels, tree_coord, scale);
-                } else {
-                    draw_tree(&mut pixels, tree_coord, scale);
+    let start_pos = (0, 0);
+    let iframes = scale;
+
+    let viewport_range_x = (
+        -(viewport.0 as i32 / 2 + border as i32),
+        viewport.0 as i32 + (slope.0 + viewport.0 as i32 + border as i32),
+    );
+    let viewport_range_y = (
+        -(viewport.1 as i32 / 2 + border as i32),
+        viewport.1 as i32 + (slope.1 + viewport.1 as i32 + border as i32),
+    );
+
+    let mut previous_trees = Vec::<(i32, i32)>::new();
+
+    HillPath::new(start_pos, dimensions, slope)
+        .enumerate()
+        .for_each(|(pframe, (block_offset, repeat_index))| {
+            for iframe in 0..iframes {
+                let frame = pframe as i32 * iframes + iframe as i32;
+                println!("pframe {}, iframe {}, frame {}", pframe, iframe, frame);
+
+                let mut pixels = Vec::<(i32, i32, Color)>::new();
+
+                let interpolated_offset = (
+                    scale * (block_offset.0 + dimensions.0 * repeat_index as i32)
+                        + (iframe * scale * slope.0) / iframes,
+                    scale * block_offset.1 + (iframe * scale * slope.1) / iframes,
+                );
+                let path_block_pos = (
+                    block_offset.0 + (dimensions.0 * repeat_index as i32),
+                    block_offset.1,
+                );
+
+                for y in viewport_range_y.0..viewport_range_y.1 {
+                    for x in viewport_range_x.0..viewport_range_x.1 {
+                        let block_pos = (x + path_block_pos.0, y + path_block_pos.1);
+                        let tree_pos = (
+                            block_pos.0.abs() % (dimensions.0) as i32,
+                            block_pos.1.abs() % (dimensions.1) as i32,
+                        );
+
+                        if tree_map.contains_key(&tree_pos) {
+                            if block_pos == path_block_pos {
+                                previous_trees.push(block_pos);
+                            }
+
+                            if previous_trees.contains(&block_pos) {
+                                draw_fallen_tree(&mut pixels, block_pos, scale);
+                            } else {
+                                draw_tree(&mut pixels, block_pos, scale);
+                            }
+                        }
+                    }
                 }
+
+                draw_scaled_sled(&mut pixels, interpolated_offset);
+
+                let mut img = ImageBuffer::from_fn(real_size.0, real_size.1, |_x, _y| {
+                    image::Rgb([255, 255, 255])
+                });
+
+                for pos in pixels {
+                    let x = (pos.0 - interpolated_offset.0)
+                        + ((viewport.0 as i32 / 2 + border as i32) * scale);
+                    let y = (pos.1 - interpolated_offset.1)
+                        + ((viewport.1 as i32 / 2 + border as i32) * scale);
+                    let color = pos.2;
+
+                    let pixel = image::Rgb([color.0, color.1, color.2]);
+                    if x >= 0 && y >= 0 && x < real_size.0 as i32 && y < real_size.1 as i32 {
+                        img.put_pixel(x as u32, y as u32, pixel);
+                    }
+                }
+
+                img.save(format!("frames/day03.frame{:05}.png", frame))
+                    .unwrap();
             }
-        }
-
-        let start_coord = (0 as i32, 0 as i32);
-
-        let mut previous_pos = start_coord;
-        let mut previous_repeat_offset = 0;
-        let path_color = (0xCC, 0xBB, 0xCC);
-
-        // take(iteration).
-        HillPath::new(start_coord, dimensions, steps).for_each(|(next_pos, repeats)| {
-            let next_repeat_offset = (repeats * x_range) as i32;
-            let scaled_previous_pos = (
-                (previous_pos.0 + previous_repeat_offset) * scale,
-                previous_pos.1 * scale,
-            );
-            let scaled_next_pos = (
-                (next_pos.0 + next_repeat_offset) * scale,
-                next_pos.1 * scale,
-            );
-
-            previous_pos = next_pos;
-            previous_repeat_offset = next_repeat_offset;
-
-            LineOfSight::new(scaled_previous_pos, scaled_next_pos).for_each(|pixel_pos| {
-                pixels.push((pixel_pos.0, pixel_pos.1, path_color));
-            });
         });
-
-        let mut img = ImageBuffer::from_fn(real_size.0, real_size.1, |_x, _y| {
-            image::Rgb([255, 255, 255])
-        });
-
-        for pos in pixels {
-            let x = pos.0 + (border as i32 * scale);
-            let y = pos.1 + (border as i32 * scale);
-            let color = pos.2;
-
-            let pixel = image::Rgb([color.0, color.1, color.2]);
-            if x >= 0 && y >= 0 && x < real_size.0 as i32 && y < real_size.1 as i32 {
-                img.put_pixel(x as u32, y as u32, pixel);
-            }
-        }
-
-        img.save(format!("frames/day03.frame{:05}.png", iteration))
-            .unwrap();
-    }
 }
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     println!("Part1: {}", solve_part1(args[1].to_string()));
