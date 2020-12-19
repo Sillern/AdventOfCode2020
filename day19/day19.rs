@@ -51,9 +51,12 @@ fn matches_rules(
     rules: &HashMap<i32, Rule>,
     rule_index: i32,
     payload: &Vec<char>,
-    payload_index: &mut usize,
+    payload_indexes: &mut Vec<usize>,
     indentation: usize,
 ) -> bool {
+    println!("payloads: {:?}", &payload_indexes);
+    let mut next_payload_indexes = vec![];
+    let found_match = payload_indexes.iter_mut().any(|payload_index| {
     if *payload_index >= payload.len() {
         println!(
             "{:indent$}TOO FAR!, payload_index: {}",
@@ -72,7 +75,8 @@ fn matches_rules(
         payload_index,
         indent = indentation,
     );
-    let mut primary_subpayload_index = *payload_index;
+    let mut primary_subpayload_index = vec![*payload_index];
+    let mut secondary_subpayload_index = vec![*payload_index];
     let matches_primary = match &rule.primary_subrules {
         Some(subrules) => {
             println!(
@@ -119,7 +123,6 @@ fn matches_rules(
         //check_secondary = !matches_primary;
     }
 
-    let mut secondary_subpayload_index = *payload_index;
     let matches_secondary =
         check_secondary
             && match &rule.secondary_subrules {
@@ -166,7 +169,7 @@ fn matches_rules(
                 false
             };
 
-            *payload_index += 1;
+            next_payload_indexes.push(*payload_index + 1);
             found_match
         }
         None => {
@@ -180,21 +183,35 @@ fn matches_rules(
             );
             if matches_primary && matches_secondary {
                 println!(
-                    "matches both: {:?} and {:?}",
+                    "MATCHES BOTH: {:?} and {:?}",
                     (primary_subpayload_index),
                     (secondary_subpayload_index)
                 );
+                for index in primary_subpayload_index {
+                if !next_payload_indexes.contains(&index) {
+                next_payload_indexes.push(index);
+                }
+                }
+                for index in secondary_subpayload_index {
+                if !next_payload_indexes.contains(&index) {
+                next_payload_indexes.push(index);
+                }
+                }
+                }
+            else if matches_primary {
+                next_payload_indexes = primary_subpayload_index;
+            } else if matches_secondary {
+                next_payload_indexes = secondary_subpayload_index;
             }
-            if matches_primary {
-                *payload_index = primary_subpayload_index;
-            }
-            if matches_secondary {
-                *payload_index = secondary_subpayload_index;
-            }
-
             matches_primary || matches_secondary
         }
     }
+    });
+
+    println!("next payloads: {:?}", &next_payload_indexes);
+    *payload_indexes = next_payload_indexes;
+
+    found_match
 }
 
 fn solve_part1(inputfile: String) -> usize {
@@ -213,10 +230,10 @@ fn solve_part1(inputfile: String) -> usize {
 
     payload_block.lines().fold(0, |sum, line| {
         let payload = line.chars().collect::<Vec<char>>();
-        let mut payload_index = 0;
+        let mut payload_indexes = vec![0];
 
-        if matches_rules(&rules, 0, &payload, &mut payload_index, 0) {
-            if payload.len() == payload_index {
+        if matches_rules(&rules, 0, &payload, &mut payload_indexes, 0) {
+            if payload_indexes.iter().any(|index| payload.len() == *index) {
                 sum + 1
             } else {
                 sum
@@ -248,12 +265,12 @@ fn solve_part2(inputfile: String) -> usize {
         rules.entry(rule.rule_id).or_insert(rule);
     });
 
-    payload_block.lines().take(1).fold(0, |sum, line| {
+    payload_block.lines().fold(0, |sum, line| {
         let payload = line.chars().collect::<Vec<char>>();
-        let mut payload_index = 0;
+        let mut payload_indexes = vec![0];
 
-        if matches_rules(&rules, 0, &payload, &mut payload_index, 0) {
-            if payload.len() == payload_index {
+        if matches_rules(&rules, 0, &payload, &mut payload_indexes, 0) {
+            if payload_indexes.iter().any(|index| payload.len() == *index) {
                 sum + 1
             } else {
                 sum
@@ -265,6 +282,6 @@ fn solve_part2(inputfile: String) -> usize {
 }
 fn main() {
     let args: Vec<String> = env::args().collect();
-    //println!("Part1: {}", solve_part1(args[1].to_string()));
+    println!("Part1: {}", solve_part1(args[1].to_string()));
     println!("Part2: {}", solve_part2(args[1].to_string()));
 }
