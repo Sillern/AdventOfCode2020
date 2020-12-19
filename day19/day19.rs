@@ -54,161 +54,98 @@ fn matches_rules(
     payload_indexes: &mut Vec<usize>,
     indentation: usize,
 ) -> bool {
-    println!("payloads: {:?}", &payload_indexes);
     let mut next_payload_indexes = vec![];
     let found_match = payload_indexes.iter_mut().any(|payload_index| {
-    if *payload_index >= payload.len() {
-        println!(
-            "{:indent$}TOO FAR!, payload_index: {}",
-            "",
-            payload_index,
-            indent = indentation,
-        );
-        return false;
-    }
-    let rule = &rules.get(&rule_index).unwrap();
-
-    println!(
-        "{:indent$}checking rule {}, payload_index: {}",
-        "",
-        rule.rule_id,
-        payload_index,
-        indent = indentation,
-    );
-    let mut primary_subpayload_index = vec![*payload_index];
-    let mut secondary_subpayload_index = vec![*payload_index];
-    let matches_primary = match &rule.primary_subrules {
-        Some(subrules) => {
-            println!(
-                "{:indent$}Primary, Recursing into rule {:?}, current payload index: {}, remainder: {:?}",
-                "",
-                subrules,
-                *payload_index,
-                &payload[*payload_index..],
-                indent = indentation
-            );
-            let matches_subrule = subrules.iter().all(|subrule_index| {
-                if matches_rules(
-                    rules,
-                    *subrule_index,
-                    payload,
-                    &mut primary_subpayload_index,
-                    indentation + 4,
-                ) {
-                    true
-                } else {
-                    false
-                }
-            });
-
-            if matches_subrule {
-                println!(
-                    "{:indent$}Primary, Recursed out of rule {:?}, current payload index: {}, remainder: {:?}",
-                    "",
-                    subrules,
-                    *payload_index,
-                &payload[*payload_index..],
-                    indent = indentation
-                );
-                true
-            } else {
-                false
-            }
+        if *payload_index >= payload.len() {
+            return false;
         }
-        None => false,
-    };
+        let rule = &rules.get(&rule_index).unwrap();
 
-    let mut check_secondary = true;
-    if rule.rule_id == 8 || rule.rule_id == 11 {
-        //check_secondary = !matches_primary;
-    }
-
-    let matches_secondary =
-        check_secondary
-            && match &rule.secondary_subrules {
-                Some(subrules) => {
-                    println!(
-                        "{:indent$}Secondary, Recursing into rule {:?}, current payload index: {}",
-                        "",
-                        subrules,
-                        *payload_index,
-                        indent = indentation
-                    );
-                    let matches_subrule = subrules.iter().all(|subrule_index| {
-                        if matches_rules(
-                            rules,
-                            *subrule_index,
-                            payload,
-                            &mut secondary_subpayload_index,
-                            indentation + 4,
-                        ) {
-                            true
-                        } else {
-                            false
-                        }
-                    });
-
-                    if matches_subrule {
-                        println!(
-                        "{:indent$}Secondary, Recursed out of rule {:?}, current payload index: {}",
-                        "", subrules, *payload_index, indent=indentation
-                    );
+        let mut primary_subpayload_index = vec![*payload_index];
+        let mut secondary_subpayload_index = vec![*payload_index];
+        let matches_primary = match &rule.primary_subrules {
+            Some(subrules) => {
+                let matches_subrule = subrules.iter().all(|subrule_index| {
+                    if matches_rules(
+                        rules,
+                        *subrule_index,
+                        payload,
+                        &mut primary_subpayload_index,
+                        indentation + 4,
+                    ) {
                         true
                     } else {
                         false
                     }
-                }
-                None => false,
-            };
+                });
 
-    match rule.rule {
-        Some(rule_char) => {
-            let found_match = if payload.get(*payload_index) == Some(&rule_char) {
-                true
-            } else {
-                false
-            };
-
-            next_payload_indexes.push(*payload_index + 1);
-            found_match
-        }
-        None => {
-            println!(
-                "{:indent$}found subrule match {} || {}, rule {}",
-                "",
-                matches_primary,
-                matches_secondary,
-                rule.rule_id,
-                indent = indentation
-            );
-            if matches_primary && matches_secondary {
-                println!(
-                    "MATCHES BOTH: {:?} and {:?}",
-                    (primary_subpayload_index),
-                    (secondary_subpayload_index)
-                );
-                for index in primary_subpayload_index {
-                if !next_payload_indexes.contains(&index) {
-                next_payload_indexes.push(index);
+                if matches_subrule {
+                    true
+                } else {
+                    false
                 }
-                }
-                for index in secondary_subpayload_index {
-                if !next_payload_indexes.contains(&index) {
-                next_payload_indexes.push(index);
-                }
-                }
-                }
-            else if matches_primary {
-                next_payload_indexes = primary_subpayload_index;
-            } else if matches_secondary {
-                next_payload_indexes = secondary_subpayload_index;
             }
-            matches_primary || matches_secondary
+            None => false,
+        };
+
+        let matches_secondary = match &rule.secondary_subrules {
+            Some(subrules) => {
+                let matches_subrule = subrules.iter().all(|subrule_index| {
+                    if matches_rules(
+                        rules,
+                        *subrule_index,
+                        payload,
+                        &mut secondary_subpayload_index,
+                        indentation + 4,
+                    ) {
+                        true
+                    } else {
+                        false
+                    }
+                });
+
+                if matches_subrule {
+                    true
+                } else {
+                    false
+                }
+            }
+            None => false,
+        };
+
+        match rule.rule {
+            Some(rule_char) => {
+                let found_match = if payload.get(*payload_index) == Some(&rule_char) {
+                    true
+                } else {
+                    false
+                };
+
+                next_payload_indexes.push(*payload_index + 1);
+                found_match
+            }
+            None => {
+                if matches_primary && matches_secondary {
+                    for index in primary_subpayload_index {
+                        if !next_payload_indexes.contains(&index) {
+                            next_payload_indexes.push(index);
+                        }
+                    }
+                    for index in secondary_subpayload_index {
+                        if !next_payload_indexes.contains(&index) {
+                            next_payload_indexes.push(index);
+                        }
+                    }
+                } else if matches_primary {
+                    next_payload_indexes = primary_subpayload_index;
+                } else if matches_secondary {
+                    next_payload_indexes = secondary_subpayload_index;
+                }
+                matches_primary || matches_secondary
+            }
         }
-    }
     });
 
-    println!("next payloads: {:?}", &next_payload_indexes);
     *payload_indexes = next_payload_indexes;
 
     found_match
