@@ -7,16 +7,23 @@ type Color = (u8, u8, u8);
 type Coordinate = (i32, i32);
 
 #[derive(Debug)]
+enum Location {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+#[derive(Debug)]
 struct Tile {
     tile_id: i32,
     location: Coordinate,
-    rotation: i32,
     pixels: Vec<Coordinate>,
-    borders: Vec<i32>,
+    borders: Vec<((i32, i32), Location)>,
 }
 
 impl Tile {
-    fn new(block: &str) -> Tile {
+    fn new(block_index: usize, block_size: usize, block: &str) -> Tile {
         let tile_id_pattern = Regex::new(r"Tile (?P<tile_id>\d+):$").unwrap();
 
         let parsed = tile_id_pattern
@@ -37,20 +44,53 @@ impl Tile {
 
         Tile {
             tile_id: tile_id,
-            location: (-1, -1),
-            rotation: 0,
+            location: (
+                (block_index % block_size) as i32,
+                (block_index / block_size) as i32,
+            ),
             borders: Tile::get_borders(&pixels),
             pixels: pixels,
         }
     }
 
-    fn get_borders(pixels: &Vec<Coordinate>) -> Vec<i32> {
-        let mut borders = Vec::<i32>::new();
-
+    fn get_border_bitpattern(pixels: &Vec<Coordinate>, border: &Vec<Coordinate>) -> (i32, i32) {
         let max_dimension = 10;
         let max_index = max_dimension - 1;
 
         // top row
+        let mut bitpattern = 0;
+        let mut bitpattern_reversed = 0;
+        border.iter().enumerate().for_each(|(bit, coord)| {
+            if pixels.contains(&coord) {
+                bitpattern_reversed |= 1 << bit;
+                bitpattern |= 1 << (max_index - bit);
+            }
+        });
+
+        (bitpattern, bitpattern_reversed)
+    }
+
+    fn get_borders(pixels: &Vec<Coordinate>) -> Vec<((i32, i32), Location)> {
+        let mut borders = Vec::<((i32, i32), Location)>::new();
+
+        let max_dimension = 10;
+        let max_index = max_dimension - 1;
+
+        let top_row = (0..max_dimension)
+            .map(|x| (x, 0))
+            .collect::<Vec<Coordinate>>();
+        let bottom_row = (0..max_dimension)
+            .map(|x| (x, max_index))
+            .collect::<Vec<Coordinate>>();
+        let left_column = (0..max_dimension)
+            .map(|y| (0, y))
+            .collect::<Vec<Coordinate>>();
+        let right_column = (0..max_dimension)
+            .map(|y| (max_index, y))
+            .collect::<Vec<Coordinate>>();
+
+        // top row
+
         let mut bitpattern = 0;
         let mut bitpattern_reversed = 0;
         for bit in 0..max_dimension {
@@ -60,8 +100,7 @@ impl Tile {
             }
         }
 
-        borders.push(bitpattern);
-        borders.push(bitpattern_reversed);
+        borders.push(((bitpattern, bitpattern_reversed), Location::Top));
 
         // bottom row
         bitpattern = 0;
@@ -73,8 +112,7 @@ impl Tile {
             }
         }
 
-        borders.push(bitpattern);
-        borders.push(bitpattern_reversed);
+        borders.push(((bitpattern, bitpattern_reversed), Location::Bottom));
 
         // left edge
         bitpattern = 0;
@@ -86,8 +124,7 @@ impl Tile {
             }
         }
 
-        borders.push(bitpattern);
-        borders.push(bitpattern_reversed);
+        borders.push(((bitpattern, bitpattern_reversed), Location::Left));
 
         // right edge
         bitpattern = 0;
@@ -99,16 +136,23 @@ impl Tile {
             }
         }
 
-        borders.push(bitpattern);
-        borders.push(bitpattern_reversed);
+        borders.push(((bitpattern, bitpattern_reversed), Location::Right));
 
         borders
     }
 
-    fn draw(&self, pixels: &mut Vec<(Coordinate, Color)>, top_left: (i32, i32)) {
+    fn draw(
+        &self,
+        tiles: &HashMap<i32, Tile>,
+        pixels: &mut Vec<(Coordinate, Color)>,
+        top_left: (i32, i32),
+    ) {
         let max_dimension = 10;
         let color = (0x56, 0x67, 0x44);
         let border_color = (0x33, 0xCC, 0x66);
+        let edge_color = (0x55, 0x48, 0x96);
+        let corner_color = (0x80, 0x57, 0x88);
+
         for y in 0..max_dimension {
             for x in 0..max_dimension {
                 if self.pixels.contains(&(x, y)) {
@@ -117,7 +161,11 @@ impl Tile {
                         {
                             border_color
                         } else {
-                            color
+                            match self.count_valid_borders(&tiles) {
+                                2 => corner_color,
+                                3 => edge_color,
+                                _ => color,
+                            }
                         };
                     pixels.push((
                         ((top_left.0 + x as i32), (top_left.1 + y as i32)),
@@ -128,88 +176,130 @@ impl Tile {
         }
     }
 
-    fn contains_edge(&self, other_border: i32) -> bool {
-        self.borders.iter().any(|border| *border == other_border)
-    }
-
-    fn is_cornerpiece(&self, tiles: &Vec<Tile>) -> bool {
-        self.borders.iter().fold(0, |sum, edge| {
-            sum + if tiles.iter().any(|other_tile| {
-                if other_tile.tile_id != self.tile_id {
-                    other_tile.contains_edge(*edge)
-                } else {
-                    false
-                }
-            }) {
-                0
-            } else {
-                1
-            }
-        }) == 4
-    }
-
-    fn num_valid_borders(&self, tiles: &Vec<Tile>) -> usize {
-        tiles.iter().fold(0, |sum, tile| {
-            sum + if tile.tile_id != self.tile_id {
-                tile.borders.iter().fold(0, |sum, other_border| {
-                    sum + self
-                        .borders
-                        .iter()
-                        .filter(|border| *border == other_border)
-                        .count()
-                })
-            } else {
-                sum
-            }
+    fn matches_border(&self, other_border: i32) -> bool {
+        self.borders.iter().any(|((border, border_reversed), _)| {
+            *border == other_border || *border_reversed == other_border
         })
     }
+
+    fn valid_borders(&self, tiles: &HashMap<i32, Tile>) -> Vec<i32> {
+        tiles
+            .iter()
+            .filter_map(|(other_tile_id, other_tile)| {
+                if self.borders.iter().any(|((border, border_reversed), _)| {
+                    if *other_tile_id != self.tile_id {
+                        other_tile.matches_border(*border)
+                            || other_tile.matches_border(*border_reversed)
+                    } else {
+                        false
+                    }
+                }) {
+                    Some(*other_tile_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<i32>>()
+    }
+
+    fn count_valid_borders(&self, tiles: &HashMap<i32, Tile>) -> usize {
+        self.valid_borders(&tiles).len()
+    }
+
+    fn is_edgepiece(&self, tiles: &HashMap<i32, Tile>) -> bool {
+        // Edge pieces has three valid borders
+        self.count_valid_borders(tiles) == 3
+    }
+
+    fn is_cornerpiece(&self, tiles: &HashMap<i32, Tile>) -> bool {
+        // Corner pieces has two valid borders
+        self.count_valid_borders(tiles) == 2
+    }
+
+    fn find_bordering_tiles(&self, tiles: &HashMap<i32, Tile>) -> Vec<i32> {
+        self.valid_borders(&tiles)
+    }
+
+    fn rotate(&mut self) {
+        self.pixels = self
+            .pixels
+            .iter()
+            .map(|(x, y)| {
+                let coord = (9 - 1 * *y as i32, *x as i32);
+                coord
+            })
+            .collect::<Vec<Coordinate>>();
+    }
+
+    fn place_tile(&self, tile_id: i32, tiles: &mut HashMap<i32, Tile>) {
+        /*
+        let tiles_to_switch = tiles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, tile)| {
+                if tile.location == from || tile.location == to {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<usize>>();
+
+        tiles_to_switch.iter().for_each(|&index| {
+            if tiles[index].location == from {
+                tiles[index].location = to;
+            } else if tiles[index].location == to {
+                tiles[index].location = from;
+            }
+        });
+        */
+    }
 }
 
-fn solve_part1(inputfile: String) -> usize {
-    let contents =
-        std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
-    let max_dimension: u32 = 10;
-    let tiles = contents
-        .split("\n\n")
-        .map(|tile_block| Tile::new(tile_block))
-        .collect::<Vec<Tile>>();
+fn switch_tiles(tiles: &mut HashMap<i32, Tile>, from: Coordinate, to: Coordinate) {
+    let tiles_to_switch = tiles
+        .iter()
+        .filter_map(|(tile_id, tile)| {
+            if tile.location == from || tile.location == to {
+                Some(*tile_id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<i32>>();
 
-    // visualize(&tiles);
-    tiles.iter().fold(1, |product, tile| {
-        if tile.is_cornerpiece(&tiles) {
-            println!(
-                "tile: {:?}, cornerpiece: {}",
-                tile.tile_id,
-                tile.is_cornerpiece(&tiles) //tile.num_valid_borders(&tiles)
-            );
-            product * tile.tile_id as usize
-        } else {
-            product
-        }
-    })
+    tiles_to_switch.iter().for_each(|&index| {
+        tiles.entry(index).and_modify(|entry| {
+            if entry.location == from {
+                entry.location = to;
+            } else if entry.location == to {
+                entry.location = from;
+            }
+        });
+    });
 }
 
-fn visualize(tiles: &Vec<Tile>) {
+fn visualize(tiles: &HashMap<i32, Tile>, block_size: usize, frame: i32) {
     let max_dimension: u32 = 10;
-    let num_blocks = (tiles.len() as f32).sqrt() as u32;
     let scale: u32 = 8;
     let border: u32 = 2;
-    let block_size = max_dimension + border;
-    let frame = 0;
+    let tile_size = max_dimension + border;
     let mut pixels = Vec::<(Coordinate, Color)>::new();
 
-    tiles.iter().enumerate().for_each(|(index, tile)| {
-        let x = index as u32 % num_blocks;
-        let y = index as u32 / num_blocks;
+    tiles.iter().for_each(|(_, tile)| {
         tile.draw(
+            &tiles,
             &mut pixels,
-            ((x * block_size) as i32, (y * block_size) as i32),
+            (
+                (tile.location.0 as usize * tile_size as usize) as i32,
+                (tile.location.1 as usize * tile_size as usize) as i32,
+            ),
         );
     });
 
     let real_size = (
-        (num_blocks * block_size + (border * 2)) * scale as u32,
-        (num_blocks * block_size + (border * 2)) * scale as u32,
+        (block_size as u32 * tile_size + border) * scale as u32,
+        (block_size as u32 * tile_size + border) * scale as u32,
     );
 
     println!("Create imagebuffer with size: {:?}", real_size);
@@ -236,8 +326,100 @@ fn visualize(tiles: &Vec<Tile>) {
         .unwrap();
 }
 
+fn solve_part1(inputfile: String) -> usize {
+    let contents =
+        std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
+    let block_size = (contents.split("\n\n").count() as f32).sqrt() as usize;
+    let mut tiles = HashMap::<i32, Tile>::new();
+
+    contents
+        .split("\n\n")
+        .enumerate()
+        .for_each(|(index, tile_block)| {
+            let tile = Tile::new(index, block_size, tile_block);
+            tiles.entry(tile.tile_id).or_insert(tile);
+        });
+
+    tiles.iter().fold(1, |product, (tile_id, tile)| {
+        if tile.is_cornerpiece(&tiles) {
+            product * *tile_id as usize
+        } else {
+            product
+        }
+    })
+}
+
+fn solve_part2(inputfile: String) -> usize {
+    let contents =
+        std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
+    let block_size = (contents.split("\n\n").count() as f32).sqrt() as usize;
+    let mut tiles = HashMap::<i32, Tile>::new();
+
+    contents
+        .split("\n\n")
+        .enumerate()
+        .for_each(|(index, tile_block)| {
+            let tile = Tile::new(index, block_size, tile_block);
+            tiles.entry(tile.tile_id).or_insert(tile);
+        });
+
+    let mut frame = 0;
+    visualize(&tiles, block_size, frame);
+
+    let cornerpiece_id = tiles
+        .iter()
+        .filter_map(|(tile_id, tile)| {
+            if tile.is_cornerpiece(&tiles) {
+                Some(*tile_id)
+            } else {
+                None
+            }
+        })
+        .next()
+        .unwrap();
+
+    println!(
+        "cornerpiece: {}: {:?}",
+        cornerpiece_id,
+        tiles.get(&cornerpiece_id).unwrap().location
+    );
+
+    let next_tiles = tiles
+        .get(&cornerpiece_id)
+        .unwrap()
+        .find_bordering_tiles(&tiles);
+
+    println!("{}: Next tiles: {:?}", cornerpiece_id, next_tiles);
+    let location = tiles.get(&cornerpiece_id).unwrap().location;
+    switch_tiles(&mut tiles, location, (0, 0));
+    frame += 1;
+    visualize(&tiles, block_size, frame);
+
+    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
+    frame += 1;
+    visualize(&tiles, block_size, frame);
+
+    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
+    frame += 1;
+
+    visualize(&tiles, block_size, frame);
+    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
+    frame += 1;
+
+    visualize(&tiles, block_size, frame);
+    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
+    frame += 1;
+
+    visualize(&tiles, block_size, frame);
+    0
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-    println!("Part1: {}", solve_part1(args[1].to_string()));
-    //println!("Part2: {}", solve_part2(args[1].to_string()));
+    println!(
+        "Part1: {} == {}",
+        solve_part1(args[1].to_string()),
+        "20899048083289"
+    );
+    println!("Part2: {}", solve_part2(args[1].to_string()));
 }
