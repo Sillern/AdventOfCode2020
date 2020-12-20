@@ -128,50 +128,65 @@ impl Tile {
         }
     }
 
-    fn find_matching_border(&self, tiles: &Tile) -> bool {
-        let mut found_match = false;
-        self.borders.iter().for_each(|border| {
-            let matching_borders = self
-                .borders
-                .iter()
-                .filter(|other_border| border == *other_border)
-                .count();
-
-            if matching_borders > 0 {
-                println!("Found matching border");
-                found_match = true
-            }
-        });
-
-        found_match
+    fn contains_edge(&self, other_border: i32) -> bool {
+        self.borders.iter().any(|border| *border == other_border)
     }
-    fn find_matching_borders(&self, tiles: &Vec<Tile>) -> i32 {
-        tiles.iter().for_each(|tile| {
-            tile.find_matching_border(self);
-        });
-        0
+
+    fn is_cornerpiece(&self, tiles: &Vec<Tile>) -> bool {
+        self.borders.iter().fold(0, |sum, edge| {
+            sum + if tiles.iter().any(|other_tile| {
+                if other_tile.tile_id != self.tile_id {
+                    other_tile.contains_edge(*edge)
+                } else {
+                    false
+                }
+            }) {
+                0
+            } else {
+                1
+            }
+        }) == 4
+    }
+
+    fn num_valid_borders(&self, tiles: &Vec<Tile>) -> usize {
+        tiles.iter().fold(0, |sum, tile| {
+            sum + if tile.tile_id != self.tile_id {
+                tile.borders.iter().fold(0, |sum, other_border| {
+                    sum + self
+                        .borders
+                        .iter()
+                        .filter(|border| *border == other_border)
+                        .count()
+                })
+            } else {
+                sum
+            }
+        })
     }
 }
 
-fn solve_part1(inputfile: String) -> i32 {
+fn solve_part1(inputfile: String) -> usize {
     let contents =
         std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
     let max_dimension: u32 = 10;
     let tiles = contents
         .split("\n\n")
-        .map(|tile_block| {
-            let tile = Tile::new(tile_block);
-            println!("tile: {:?}", tile);
-            tile
-        })
+        .map(|tile_block| Tile::new(tile_block))
         .collect::<Vec<Tile>>();
 
-    tiles.iter().take(1).for_each(|tile| {
-        tile.find_matching_borders(&tiles);
-    });
-
-    visualize(&tiles);
-    0
+    // visualize(&tiles);
+    tiles.iter().fold(1, |product, tile| {
+        if tile.is_cornerpiece(&tiles) {
+            println!(
+                "tile: {:?}, cornerpiece: {}",
+                tile.tile_id,
+                tile.is_cornerpiece(&tiles) //tile.num_valid_borders(&tiles)
+            );
+            product * tile.tile_id as usize
+        } else {
+            product
+        }
+    })
 }
 
 fn visualize(tiles: &Vec<Tile>) {
