@@ -6,7 +6,7 @@ use std::env;
 type Color = (u8, u8, u8);
 type Coordinate = (i32, i32);
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum Location {
     Top,
     Bottom,
@@ -57,7 +57,6 @@ impl Tile {
         let max_dimension = 10;
         let max_index = max_dimension - 1;
 
-        // top row
         let mut bitpattern = 0;
         let mut bitpattern_reversed = 0;
         border.iter().enumerate().for_each(|(bit, coord)| {
@@ -71,8 +70,6 @@ impl Tile {
     }
 
     fn get_borders(pixels: &Vec<Coordinate>) -> Vec<((i32, i32), Location)> {
-        let mut borders = Vec::<((i32, i32), Location)>::new();
-
         let max_dimension = 10;
         let max_index = max_dimension - 1;
 
@@ -89,56 +86,21 @@ impl Tile {
             .map(|y| (max_index, y))
             .collect::<Vec<Coordinate>>();
 
-        // top row
-
-        let mut bitpattern = 0;
-        let mut bitpattern_reversed = 0;
-        for bit in 0..max_dimension {
-            if pixels.contains(&(bit, 0)) {
-                bitpattern_reversed |= 1 << bit;
-                bitpattern |= 1 << (max_index - bit);
-            }
-        }
-
-        borders.push(((bitpattern, bitpattern_reversed), Location::Top));
-
-        // bottom row
-        bitpattern = 0;
-        bitpattern_reversed = 0;
-        for bit in 0..max_dimension {
-            if pixels.contains(&(bit, max_index)) {
-                bitpattern_reversed |= 1 << bit;
-                bitpattern |= 1 << (max_index - bit);
-            }
-        }
-
-        borders.push(((bitpattern, bitpattern_reversed), Location::Bottom));
-
-        // left edge
-        bitpattern = 0;
-        bitpattern_reversed = 0;
-        for bit in 0..max_dimension {
-            if pixels.contains(&(0, bit)) {
-                bitpattern_reversed |= 1 << bit;
-                bitpattern |= 1 << (max_index - bit);
-            }
-        }
-
-        borders.push(((bitpattern, bitpattern_reversed), Location::Left));
-
-        // right edge
-        bitpattern = 0;
-        bitpattern_reversed = 0;
-        for bit in 0..max_dimension {
-            if pixels.contains(&(max_index, bit)) {
-                bitpattern_reversed |= 1 << bit;
-                bitpattern |= 1 << (max_index - bit);
-            }
-        }
-
-        borders.push(((bitpattern, bitpattern_reversed), Location::Right));
-
-        borders
+        vec![
+            (Tile::get_border_bitpattern(pixels, &top_row), Location::Top),
+            (
+                Tile::get_border_bitpattern(pixels, &bottom_row),
+                Location::Bottom,
+            ),
+            (
+                Tile::get_border_bitpattern(pixels, &left_column),
+                Location::Left,
+            ),
+            (
+                Tile::get_border_bitpattern(pixels, &right_column),
+                Location::Right,
+            ),
+        ]
     }
 
     fn draw(
@@ -177,9 +139,28 @@ impl Tile {
     }
 
     fn matches_border(&self, other_border: i32) -> bool {
-        self.borders.iter().any(|((border, border_reversed), _)| {
-            *border == other_border || *border_reversed == other_border
-        })
+        self.borders
+            .iter()
+            .any(|((border, _), _)| *border == other_border)
+    }
+
+    fn matching_border(&self, other_tile: &Tile) -> Option<(Location, bool)> {
+        self.borders
+            .iter()
+            .filter_map(|((border, border_reversed), direction)| {
+                if other_tile.tile_id != self.tile_id {
+                    if other_tile.matches_border(*border) {
+                        Some((*direction, false))
+                    } else if other_tile.matches_border(*border_reversed) {
+                        Some((*direction, true))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .next()
     }
 
     fn valid_borders(&self, tiles: &HashMap<i32, Tile>) -> Vec<i32> {
@@ -224,36 +205,93 @@ impl Tile {
         self.pixels = self
             .pixels
             .iter()
-            .map(|(x, y)| {
-                let coord = (9 - 1 * *y as i32, *x as i32);
-                coord
-            })
+            .map(|(x, y)| (9 - 1 * *y as i32, *x as i32))
             .collect::<Vec<Coordinate>>();
+        self.borders = Tile::get_borders(&self.pixels);
     }
 
-    fn place_tile(&self, tile_id: i32, tiles: &mut HashMap<i32, Tile>) {
-        /*
-        let tiles_to_switch = tiles
+    fn flip_horizontal(&mut self) {
+        self.pixels = self
+            .pixels
             .iter()
-            .enumerate()
-            .filter_map(|(index, tile)| {
-                if tile.location == from || tile.location == to {
-                    Some(index)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<usize>>();
-
-        tiles_to_switch.iter().for_each(|&index| {
-            if tiles[index].location == from {
-                tiles[index].location = to;
-            } else if tiles[index].location == to {
-                tiles[index].location = from;
-            }
-        });
-        */
+            .map(|(x, y)| (9 - *x as i32, *y as i32))
+            .collect::<Vec<Coordinate>>();
+        self.borders = Tile::get_borders(&self.pixels);
     }
+
+    fn flip_vertical(&mut self) {
+        self.pixels = self
+            .pixels
+            .iter()
+            .map(|(x, y)| (*x as i32, 9 - *y as i32))
+            .collect::<Vec<Coordinate>>();
+        self.borders = Tile::get_borders(&self.pixels);
+    }
+}
+
+fn place_tile_next_to(
+    current_tile_id: i32,
+    other_tile_id: i32,
+    tiles: &HashMap<i32, Tile>,
+    block_size: usize,
+) -> Option<Coordinate> {
+    let current_tile = &tiles.get(&current_tile_id).unwrap();
+    let other_tile = &tiles.get(&other_tile_id).unwrap();
+
+    let next_location = match current_tile.matching_border(other_tile).unwrap().0 {
+        Location::Top => (current_tile.location.0, current_tile.location.1 - 1),
+        Location::Bottom => (current_tile.location.0, current_tile.location.1 + 1),
+        Location::Left => (current_tile.location.0 - 1, current_tile.location.1),
+        Location::Right => (current_tile.location.0 + 1, current_tile.location.1),
+    };
+
+    if next_location.0 < 0
+        || next_location.1 < 0
+        || next_location.0 > block_size as i32
+        || next_location.1 > block_size as i32
+    {
+        None
+    } else {
+        Some(next_location)
+    }
+}
+
+fn needs_to_flip(
+    current_tile_id: i32,
+    other_tile_id: i32,
+    tiles: &HashMap<i32, Tile>,
+) -> Option<Location> {
+    let current_tile = &tiles.get(&current_tile_id).unwrap();
+    let other_tile = &tiles.get(&other_tile_id).unwrap();
+
+    let (other_direction, other_reversed) = other_tile.matching_border(current_tile).unwrap();
+
+    if other_reversed {
+        println!("Flip!: {:?}", other_direction);
+        Some(other_direction)
+    } else {
+        None
+    }
+}
+
+fn is_placed_correctly(
+    current_tile_id: i32,
+    other_tile_id: i32,
+    tiles: &HashMap<i32, Tile>,
+) -> bool {
+    let current_tile = &tiles.get(&current_tile_id).unwrap();
+    let other_tile = &tiles.get(&other_tile_id).unwrap();
+
+    let (other_direction, other_reversed) = other_tile.matching_border(current_tile).unwrap();
+    let (direction, reversed) = current_tile.matching_border(other_tile).unwrap();
+
+    !other_reversed
+        && match direction {
+            Location::Top => Location::Bottom == other_direction,
+            Location::Bottom => Location::Top == other_direction,
+            Location::Left => Location::Right == other_direction,
+            Location::Right => Location::Left == other_direction,
+        }
 }
 
 fn switch_tiles(tiles: &mut HashMap<i32, Tile>, from: Coordinate, to: Coordinate) {
@@ -286,6 +324,8 @@ fn visualize(tiles: &HashMap<i32, Tile>, block_size: usize, frame: i32) {
     let tile_size = max_dimension + border;
     let mut pixels = Vec::<(Coordinate, Color)>::new();
 
+    println!("frame: {}, ", frame);
+
     tiles.iter().for_each(|(_, tile)| {
         tile.draw(
             &tiles,
@@ -302,7 +342,6 @@ fn visualize(tiles: &HashMap<i32, Tile>, block_size: usize, frame: i32) {
         (block_size as u32 * tile_size + border) * scale as u32,
     );
 
-    println!("Create imagebuffer with size: {:?}", real_size);
     let mut img = ImageBuffer::from_fn(real_size.0, real_size.1, |_x, _y| {
         image::Rgb([255, 255, 255])
     });
@@ -363,8 +402,12 @@ fn solve_part2(inputfile: String) -> usize {
             tiles.entry(tile.tile_id).or_insert(tile);
         });
 
+    let enable_visualization = false;
     let mut frame = 0;
-    visualize(&tiles, block_size, frame);
+
+    if enable_visualization {
+        visualize(&tiles, block_size, frame)
+    }
 
     let cornerpiece_id = tiles
         .iter()
@@ -384,33 +427,97 @@ fn solve_part2(inputfile: String) -> usize {
         tiles.get(&cornerpiece_id).unwrap().location
     );
 
-    let next_tiles = tiles
-        .get(&cornerpiece_id)
-        .unwrap()
-        .find_bordering_tiles(&tiles);
+    // Place a cornerpiece at the top left tile
+    let mut tiles_to_move = vec![(cornerpiece_id, (0, 0))];
+    let mut completed_tiles = vec![];
 
-    println!("{}: Next tiles: {:?}", cornerpiece_id, next_tiles);
-    let location = tiles.get(&cornerpiece_id).unwrap().location;
-    switch_tiles(&mut tiles, location, (0, 0));
+    while tiles_to_move.len() > 0 {
+        println!("Movelist: {:?}", tiles_to_move);
+        println!("Completed list: {:?}", completed_tiles);
+        let (tile_id_to_move, wanted_location) = tiles_to_move.pop().unwrap();
+
+        let bordering_tiles = tiles
+            .get(&tile_id_to_move)
+            .unwrap()
+            .find_bordering_tiles(&tiles);
+
+        let location = tiles.get(&tile_id_to_move).unwrap().location;
+        if location != wanted_location {
+            println!("Moving tile from {:?} to {:?}", location, wanted_location);
+            switch_tiles(&mut tiles, location, wanted_location);
+
+            if enable_visualization {
+                frame += 1;
+                visualize(&tiles, block_size, frame)
+            }
+        }
+
+        bordering_tiles.iter().for_each(|bordering_tile_id| {
+            if !completed_tiles.contains(bordering_tile_id) {
+                let mut placed_bordering_tile = false;
+                while !placed_bordering_tile {
+                    let bordering_tile_location = tiles.get(&bordering_tile_id).unwrap().location;
+
+                    match place_tile_next_to(
+                        tile_id_to_move,
+                        *bordering_tile_id,
+                        &mut tiles,
+                        block_size,
+                    ) {
+                        Some(new_location) => {
+                            switch_tiles(&mut tiles, bordering_tile_location, new_location);
+                            if !completed_tiles.contains(bordering_tile_id)
+                                && !tiles_to_move.contains(&(*bordering_tile_id, new_location))
+                            {
+                                tiles_to_move.push((*bordering_tile_id, new_location));
+                            }
+                            placed_bordering_tile = true;
+                        }
+                        None => {
+                            println!("!!!!!!!!!!!!!!1 {}: OutOfBounds, rotating", tile_id_to_move);
+                            tiles.get_mut(&tile_id_to_move).unwrap().rotate();
+                        }
+                    }
+                    if enable_visualization {
+                        frame += 1;
+                        visualize(&tiles, block_size, frame)
+                    }
+                }
+
+                while !is_placed_correctly(tile_id_to_move, *bordering_tile_id, &mut tiles) {
+                    println!("{}: Misplaced, frame: {}", bordering_tile_id, frame);
+                    match needs_to_flip(tile_id_to_move, *bordering_tile_id, &mut tiles) {
+                        Some(direction) => match direction {
+                            Location::Top | Location::Bottom => {
+                                println!("flipping horizontal");
+                                tiles.get_mut(bordering_tile_id).unwrap().flip_horizontal();
+                            }
+                            Location::Left | Location::Right => {
+                                println!("flipping vertical");
+                                tiles.get_mut(bordering_tile_id).unwrap().flip_vertical();
+                            }
+                        },
+                        None => {
+                            println!("rotating");
+                            tiles.get_mut(bordering_tile_id).unwrap().rotate();
+                        }
+                    }
+
+                    if enable_visualization {
+                        frame += 1;
+                        visualize(&tiles, block_size, frame)
+                    }
+                }
+            }
+        });
+        completed_tiles.push(tile_id_to_move);
+    }
+
+    //remove_borders(&mut tiles);
+
     frame += 1;
     visualize(&tiles, block_size, frame);
 
-    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
-    frame += 1;
-    visualize(&tiles, block_size, frame);
-
-    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
-    frame += 1;
-
-    visualize(&tiles, block_size, frame);
-    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
-    frame += 1;
-
-    visualize(&tiles, block_size, frame);
-    tiles.get_mut(&cornerpiece_id).unwrap().rotate();
-    frame += 1;
-
-    visualize(&tiles, block_size, frame);
     0
 }
 
