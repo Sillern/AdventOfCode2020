@@ -2,57 +2,48 @@ use itertools::Itertools;
 use std::collections::VecDeque;
 use std::env;
 
-fn print_cups(cups: &VecDeque<u32>, current_cup: &u32) {
+fn print_cups(cups: &Vec<usize>, current_cup: &usize, print_length: usize) {
     print!("cups: ");
-    cups.iter().for_each(|cup| {
+    let mut printed_values = 0;
+    let mut cursor = current_cup;
+    for index in 1..cups.len() {
+        let cup = cursor;
         if cup == current_cup {
             print!("({})", cup);
         } else {
             print!(" {} ", cup);
         }
-    });
+        cursor = &cups[*cursor];
+
+        printed_values += 1;
+        if printed_values > print_length {
+            break;
+        }
+    }
     println!();
 }
 
-fn make_move(cups: &mut VecDeque<u32>, current_cup: &mut u32) {
-    let current_cup_index = cups
-        .iter()
-        .find_position(|&cup| *cup == *current_cup)
-        .unwrap()
-        .0;
+fn make_move(cups: &mut Vec<usize>, current_cup: &mut usize) {
+    let taken_cups = vec![
+        cups[*current_cup],
+        cups[cups[*current_cup]],
+        cups[cups[cups[*current_cup]]],
+    ];
 
-    let taken_cups = (0..3)
-        .map(|_| {
-            let remove_index = if current_cup_index + 1 >= cups.len() {
-                0
-            } else {
-                current_cup_index + 1
-            };
-            cups.remove(remove_index).unwrap()
-        })
-        .collect::<VecDeque<u32>>();
-
-    let remove_index = if current_cup_index + 1 >= cups.len() {
-        0
-    } else {
-        current_cup_index + 1
-    };
-    let next_cup = cups[remove_index].clone();
-
-    let max_cup_value = *cups.iter().max().unwrap() as u32;
-
-    let mut next_cup_index_maybe = None;
-    while next_cup_index_maybe == None {
-        *current_cup = (*current_cup + (max_cup_value + 1) - 1) % (max_cup_value + 1);
-        next_cup_index_maybe = cups.iter().find_position(|&cup| *cup == *current_cup);
+    let next_cup = cups[*taken_cups.last().unwrap()];
+    let mut destination = *current_cup - 1;
+    while taken_cups.contains(&destination) || destination == 0 {
+        destination = (destination + cups.len() - 1) % cups.len();
     }
 
-    let next_cup_index = next_cup_index_maybe.unwrap().0;
+    cups[*current_cup] = next_cup;
 
-    taken_cups
-        .iter()
-        .enumerate()
-        .for_each(|(cup_index, cup)| cups.insert(next_cup_index + 1 + cup_index, *cup));
+    let insert_before = cups[destination];
+    cups[destination] = taken_cups[0];
+    cups[taken_cups[0]] = taken_cups[1];
+    cups[taken_cups[1]] = taken_cups[2];
+    cups[taken_cups[2]] = insert_before;
+
     *current_cup = next_cup;
 }
 
@@ -60,25 +51,56 @@ fn solve_part1(inputfile: String) -> usize {
     let contents =
         std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
 
-    let mut cups = contents
+    let mut current_cup: usize = 0;
+
+    let pairs = contents
         .chars()
-        .filter_map(|c| {
-            if c.is_numeric() {
-                Some(c.to_digit(10).unwrap())
-            } else {
-                None
+        .enumerate()
+        .peekable()
+        .batching(|it| match it.next() {
+            None => None,
+            Some((index, c)) => {
+                if c.is_numeric() {
+                    let digit = c.to_digit(10).unwrap() as usize;
+
+                    if current_cup == 0 {
+                        current_cup = digit;
+                    }
+
+                    Some(match it.peek() {
+                        Some((index, next_c)) => {
+                            let next_digit = if next_c.is_numeric() {
+                                next_c.to_digit(10).unwrap() as usize
+                            } else {
+                                current_cup
+                            };
+                            (digit, next_digit)
+                        }
+                        None => (digit, current_cup),
+                    })
+                } else {
+                    None
+                }
             }
         })
-        .collect::<VecDeque<u32>>();
+        .collect::<Vec<(usize, usize)>>();
 
-    let mut current_cup = cups.front().unwrap().clone();
+    let mut cups = (0..(pairs.len() + 1)).collect::<Vec<usize>>();
+    println!("pairs: {:?}", pairs);
+    println!("cups: {:?}", cups);
+    pairs
+        .iter()
+        .for_each(|(value, next_value)| cups[*value] = *next_value);
+    println!("cups: {:?}", cups);
 
     for move_count in 0..100 {
         println!("-- move {} --", move_count + 1);
+        //print_cups(&cups, &current_cup);
         make_move(&mut cups, &mut current_cup);
     }
+
     println!("-- final --");
-    print_cups(&cups, &current_cup);
+    print_cups(&cups, &1, 10);
     0
 }
 
@@ -86,27 +108,60 @@ fn solve_part2(inputfile: String) -> usize {
     let contents =
         std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
 
-    let mut cups = contents
+    let mut current_cup: usize = 0;
+
+    let pairs = contents
         .chars()
-        .filter_map(|c| {
-            if c.is_numeric() {
-                Some(c.to_digit(10).unwrap())
-            } else {
-                None
+        .enumerate()
+        .peekable()
+        .batching(|it| match it.next() {
+            None => None,
+            Some((index, c)) => {
+                if c.is_numeric() {
+                    let digit = c.to_digit(10).unwrap() as usize;
+
+                    if current_cup == 0 {
+                        current_cup = digit;
+                    }
+
+                    Some(match it.peek() {
+                        Some((index, next_c)) => {
+                            let next_digit = if next_c.is_numeric() {
+                                next_c.to_digit(10).unwrap() as usize
+                            } else {
+                                10
+                            };
+                            (digit, next_digit)
+                        }
+                        None => (digit, 10),
+                    })
+                } else {
+                    None
+                }
             }
         })
-        .collect::<VecDeque<u32>>();
+        .collect::<Vec<(usize, usize)>>();
 
-    ((cups.len() + 1)..1000000).for_each(|value| cups.push_back(value as u32));
+    let mut cups = (0..1000001)
+        .map(|value| value + 1 as usize)
+        .collect::<Vec<usize>>();
+    let last_value = cups.len() - 1;
+    cups[last_value] = current_cup.clone();
 
-    let mut current_cup = cups.front().unwrap().clone();
+    pairs
+        .iter()
+        .for_each(|(value, next_value)| cups[*value] = *next_value);
 
     for move_count in 0..10000000 {
-        println!("-- move {} --", move_count + 1);
+        if move_count % 500000 == 0 {
+            println!("-- move {} --", move_count + 1);
+        }
+        //print_cups(&cups, &current_cup);
         make_move(&mut cups, &mut current_cup);
     }
+
     println!("-- final --");
-    print_cups(&cups, &current_cup);
+    print_cups(&cups, &1, 10);
     0
 }
 
