@@ -14,14 +14,12 @@ enum TileSide {
 
 #[derive(Debug)]
 struct Tile {
-    tile_id: usize,
     location: Coordinate,
-    path: Vec<Coordinate>,
     color: TileSide,
 }
 
 impl Tile {
-    fn new(tile_id: usize, line: &str) -> Tile {
+    fn parse(line: &str) -> Tile {
         let mut current_tile = (0, 0);
         let path = line
             .chars()
@@ -70,15 +68,12 @@ impl Tile {
             .collect::<Vec<Coordinate>>();
 
         Tile {
-            tile_id: tile_id,
             location: *path.last().unwrap(),
-            path: path,
             color: TileSide::Black,
         }
     }
 
     fn flip(&mut self) {
-        println!("Flipping: {:?}", self);
         self.color = if self.color == TileSide::Black {
             TileSide::White
         } else {
@@ -186,25 +181,119 @@ fn solve_part1(inputfile: String) -> usize {
         std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
 
     let mut tiles = HashMap::<Coordinate, Tile>::new();
-    contents.lines().enumerate().for_each(|(index, line)| {
-        let tile = Tile::new(index, line);
-        println!("current tile: {:?}", tile);
+    contents.lines().for_each(|line| {
+        let tile = Tile::parse(line);
         tiles
             .entry(tile.location)
             .and_modify(|e| e.flip())
             .or_insert(tile);
     });
 
-    println!("tiles: {:?}", tiles);
-    let mut frame = 0;
-    visualize(&tiles, frame);
+    // let mut frame = 0;
+    // visualize(&tiles, frame);
     tiles.values().fold(0, |sum, tile| {
         sum + if tile.color == TileSide::Black { 1 } else { 0 }
     })
 }
 
+fn solve_part2(inputfile: String) -> usize {
+    let contents =
+        std::fs::read_to_string(inputfile).expect("Something went wrong reading the file");
+
+    let mut tiles = HashMap::<Coordinate, Tile>::new();
+    contents.lines().for_each(|line| {
+        let tile = Tile::parse(line);
+        tiles
+            .entry(tile.location)
+            .and_modify(|e| e.flip())
+            .or_insert(tile);
+    });
+
+    for frame in 0..100 {
+        visualize(&tiles, frame);
+        let mut tiles_to_construct = Vec::<Coordinate>::new();
+
+        let mut tiles_to_flip = tiles
+            .values()
+            .filter_map(|tile| {
+                if tile.color == TileSide::Black {
+                    let neighbours = [(-2, 0), (2, 0), (-1, -1), (-1, 1), (1, 1), (1, -1)]
+                        .iter()
+                        .fold(0, |sum, coord| {
+                            let neighbour = (tile.location.0 + coord.0, tile.location.1 + coord.1);
+                            sum + match tiles.get(&neighbour) {
+                                Some(adjacent_tile) => {
+                                    if adjacent_tile.color == TileSide::Black {
+                                        1
+                                    } else {
+                                        0
+                                    }
+                                }
+                                None => {
+                                    tiles_to_construct.push(neighbour);
+                                    0
+                                }
+                            }
+                        });
+                    if neighbours == 0 || neighbours > 2 {
+                        Some(tile.location)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<Coordinate>>();
+
+        tiles_to_construct.iter().for_each(|location| {
+            tiles.insert(
+                *location,
+                Tile {
+                    location: *location,
+                    color: TileSide::White,
+                },
+            );
+        });
+        tiles.values().for_each(|tile| {
+            if tile.color == TileSide::White {
+                let neighbours = [(-2, 0), (2, 0), (-1, -1), (-1, 1), (1, 1), (1, -1)]
+                    .iter()
+                    .fold(0, |sum, coord| {
+                        let neighbour = (tile.location.0 + coord.0, tile.location.1 + coord.1);
+                        sum + match tiles.get(&neighbour) {
+                            Some(adjacent_tile) => {
+                                if adjacent_tile.color == TileSide::Black {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            None => 0,
+                        }
+                    });
+                if neighbours == 2 {
+                    tiles_to_flip.push(tile.location);
+                }
+            }
+        });
+
+        tiles_to_flip.iter().for_each(|location| {
+            tiles.entry(*location).and_modify(|e| {
+                e.flip();
+            });
+        });
+    }
+    let faces_up = tiles.values().fold(0, |sum, tile| {
+        sum + if tile.color == TileSide::Black { 1 } else { 0 }
+    });
+    println!("faces up: {}", faces_up);
+    visualize(&tiles, 101);
+    faces_up
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     println!("Part1: {}", solve_part1(args[1].to_string()));
-    //println!("Part2: {}", solve_part2(args[1].to_string()));
+    println!("Part2: {}", solve_part2(args[1].to_string()));
 }
